@@ -20,6 +20,7 @@ fn build_detours() {
         .file("dep/Detours/src/creatwth.cpp")
         .compile("detours");
 }
+#[cfg(feature = "build_bind")]
 fn generate_bindings() {
     use std::{env, fs, path::PathBuf};
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
@@ -29,9 +30,9 @@ fn generate_bindings() {
         .clang_arg(format!("-I{}", out_path.to_str().expect("OUTDIR is weird")))
         .clang_arg("-fms-compatibility")
         .clang_arg("-fms-extensions")
-        .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.16299.0/km/crt")
-        .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.17134.0/um")
-        .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.17134.0/shared")
+        .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.19041.0/ucrt")
+        .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.19041.0/um")
+        .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.19041.0/shared")
         // Detouring APIs
         .allowlist_function("DetourTransactionBegin")
         .allowlist_function("DetourUpdateThread")
@@ -89,6 +90,10 @@ fn generate_bindings() {
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings!");
 }
+
+#[cfg(not(feature = "build_bind"))]
+fn generate_bindings() {}
+
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     build_detours();
