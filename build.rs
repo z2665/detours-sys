@@ -1,3 +1,5 @@
+use std::path::{Path, PathBuf};
+
 fn build_detours() {
     cc::Build::new()
         .include("dep/Detours/src/")
@@ -20,19 +22,51 @@ fn build_detours() {
         .file("dep/Detours/src/creatwth.cpp")
         .compile("detours");
 }
+
+#[cfg(feature = "build_bind")]
+fn get_windows_kits_dir() -> Result<PathBuf, std::io::Error> {
+    use winreg::enums::*;
+    use winreg::RegKey;
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+
+    let key = r"SOFTWARE\Microsoft\Windows Kits\Installed Roots";
+
+    let dir: String = hklm.open_subkey(key)?.get_value("KitsRoot10")?;
+    println!("{}",dir);
+    Ok(dir.into())
+}
+#[cfg(feature = "build_bind")]
+fn get_include_dir(windows_kits_dir: &PathBuf,dirname: &str) -> Result<PathBuf, std::io::Error> {
+    let readdir = Path::new(windows_kits_dir).join("Include").read_dir()?;
+
+    let max_libdir = readdir
+        .filter_map(|dir| dir.ok())
+        .map(|dir| dir.path())
+        .filter(|dir| {
+            dir.components()
+                .last()
+                .and_then(|c| c.as_os_str().to_str())
+                .map(|c| c.starts_with("10.") && dir.join(dirname).is_dir())
+                .unwrap_or(false)
+        }).max()
+        .expect(&format!("Can not find a valid {:?} dir in `{:?}`",dirname, windows_kits_dir));
+
+    Ok(max_libdir.join(dirname))
+}
 #[cfg(feature = "build_bind")]
 fn generate_bindings() {
-    use std::{env, fs, path::PathBuf};
+    use std::{env, fs};
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     fs::copy("dep/Detours/src/detours.h", out_path.join("detours.h")).unwrap();
+    let wkit = get_windows_kits_dir().expect("not found windows kits");
     //
     let bindings = bindgen::Builder::default()
         .clang_arg(format!("-I{}", out_path.to_str().expect("OUTDIR is weird")))
         .clang_arg("-fms-compatibility")
         .clang_arg("-fms-extensions")
-        .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.19041.0/ucrt")
-        .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.19041.0/um")
-        .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.19041.0/shared")
+        .clang_arg(format!("-I{}",get_include_dir(&wkit,"ucrt").unwrap().to_str().unwrap()))
+        .clang_arg(format!("-I{}",get_include_dir(&wkit,"um").unwrap().to_str().unwrap()))
+        .clang_arg(format!("-I{}",get_include_dir(&wkit,"shared").unwrap().to_str().unwrap()))
         // Detouring APIs
         .allowlist_function("DetourTransactionBegin")
         .allowlist_function("DetourUpdateThread")
